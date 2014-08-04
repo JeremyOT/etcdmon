@@ -13,7 +13,7 @@ import (
   "github.com/JeremyOT/etcdmon/etcd"
   )
 
-var etcAddress = flag.String("etcd", "127.0.0.1:4001", "The url of the etcd instance to connect to.")
+var etcAddress = flag.String("etcd", "http://127.0.0.1:4001", "The url of the etcd instance to connect to.")
 var etcKey = flag.String("key", "", "The key path to post to. %H will be replaced with the current host and %P with any configured port. e.g. process/%H:%P")
 var updateInterval = flag.Int("interval", 15, "The number of seconds between each poll to etcd.")
 var ttl = flag.Int("ttl", 30, "The number of seconds that the key should stay alive after no polls are received.")
