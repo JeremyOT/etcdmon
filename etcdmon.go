@@ -21,6 +21,7 @@ var host = flag.String("host", "", "The that should be used to identify this dae
 var port = flag.Int("port", 0, "A port, if any that will be set along with the host name.")
 var value = flag.String("value", "", "The the value to sent to etcd. Like path, %H and %P can be used for automatic replacement. If not set, the host (and port if set) will be used as the value.")
 var apiRoot = flag.String("api", "/v2/keys", "The root value for any key path.")
+var getHost = flag.Bool("gethost", false, "Print the current hostname (using -etcd for lookup) and exit.")
 
 func formatValue(value, host string, port int) string {
   if value == "" {
@@ -39,6 +40,15 @@ func formatKey(key, host string, port int) string {
 
 func main() {
   flag.Parse()
+  if *getHost {
+    if serviceHost, err := etcd.LocalHost(*etcAddress); err != nil {
+      log.Println("Error retrieving host:", err)
+      os.Exit(1)
+    } else {
+      fmt.Print(serviceHost);
+      os.Exit(0)
+    }
+  }
   args := flag.Args()
   if *etcAddress == "" || *etcKey == "" {
     fmt.Println("Usage:")

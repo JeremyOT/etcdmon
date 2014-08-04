@@ -57,7 +57,8 @@ func RegisterService(etcdHost, keyPath, value string, ttl, interval time.Duratio
   }
 }
 
-// Make a connection to testUrl to infer the local host address.
+// Make a connection to testUrl to infer the local host address. Returns
+// the address of the interface that was used for the connection.
 func LocalHost(testUrl string) (host string, err error) {
   if strings.HasPrefix(testUrl, "http://") {
     testUrl = testUrl[7:]
