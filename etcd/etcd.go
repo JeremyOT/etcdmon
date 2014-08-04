@@ -44,7 +44,7 @@ func RegisterService(etcdHost, keyPath, value string, ttl, interval time.Duratio
 	if err := putToUrl(urlString, body, contentType); err != nil {
 		log.Println("Error updating etcd:", err)
 	}
-	clock := time.Tick(time.Duration(interval) * time.Second)
+	clock := time.Tick(interval)
 	for {
 		select {
 		case <-clock:
