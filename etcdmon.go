@@ -17,11 +17,11 @@ var etcdAddress = flag.String("etcd", "http://127.0.0.1:4001", "The url of the e
 var etcdKey = flag.String("key", "", "The key path to post to. %H will be replaced with the current host and %P with any configured port. e.g. process/%H:%P")
 var updateInterval = flag.Int("interval", 10, "The number of seconds between each poll to etcd.")
 var ttl = flag.Int("ttl", 30, "The number of seconds that the key should stay alive after no polls are received.")
-var host = flag.String("host", "", "The that should be used to identify this daemon. If not set, etcdmon will attempt to determine it automatically.")
+var host = flag.String("host", "", "The hostname or address that should be used to identify this daemon. If not set, etcdmon will attempt to determine it automatically.")
 var port = flag.Int("port", 0, "A port, if any that will be set along with the host name.")
 var value = flag.String("value", "", "The the value to sent to etcd. Like path, %H and %P can be used for automatic replacement. If not set, the host (and port if set) will be used as the value.")
 var apiRoot = flag.String("api", "/v2/keys", "The root value for any key path.")
-var getHost = flag.Bool("gethost", false, "Print the current hostname (using -remote for lookup) and exit.")
+var getAddress = flag.Bool("getaddress", false, "Print the local network address (using -remote for lookup) and exit.")
 var remoteTestAddress = flag.String("remote", "", "The address to use to infer the address of the local host.")
 
 func formatValue(value, host string, port int) string {
@@ -45,8 +45,8 @@ func main() {
 	if remote == "" {
 		remote = *etcdAddress
 	}
-	if *getHost {
-		if serviceHost, err := etcd.LocalHost(remote); err != nil {
+	if *getAddress {
+		if serviceHost, err := etcd.LocalAddress(remote); err != nil {
 			log.Println("Error retrieving host:", err)
 			os.Exit(1)
 		} else {
@@ -69,9 +69,9 @@ func main() {
 	serviceHost := *host
 	if serviceHost == "" {
 		var err error
-		serviceHost, err = etcd.LocalHost(remote)
+		serviceHost, err = etcd.LocalAddress(remote)
 		if err != nil {
-			log.Println("Error retrieving host. Try using a different -remote='' or setting it manually with -host=''.", err)
+			log.Println("Error retrieving address. Try using a different -remote='' or setting it manually with -host=''.", err)
 			os.Exit(1)
 		}
 	}
