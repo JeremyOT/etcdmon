@@ -1,9 +1,7 @@
 package etcd
 
 import (
-	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -55,24 +53,4 @@ func RegisterService(etcdHost, keyPath, value string, ttl, interval time.Duratio
 			return
 		}
 	}
-}
-
-// Make a connection to testUrl to infer the local network address. Returns
-// the address of the interface that was used for the connection.
-func LocalAddress(testUrl string) (host string, err error) {
-	if strings.HasPrefix(testUrl, "http://") {
-		testUrl = testUrl[7:]
-	} else if strings.HasPrefix(testUrl, "https://") {
-		testUrl = testUrl[8:]
-	}
-	if !strings.ContainsRune(testUrl, ':') {
-		testUrl = testUrl + ":80"
-	}
-	if conn, err := net.Dial("udp", fmt.Sprintf("%s", testUrl)); err != nil {
-		return "", err
-	} else {
-		defer conn.Close()
-		host = strings.Split(conn.LocalAddr().String(), ":")[0]
-	}
-	return
 }

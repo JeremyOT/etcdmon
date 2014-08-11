@@ -18,13 +18,13 @@ Usage:
 Options:
   -api="/v2/keys": The root value for any key path.
   -etcd="http://127.0.0.1:4001": The url of the etcd instance to connect to.
-  -getaddress=false: Print the local network address (using -remote for lookup) and exit.
   -host="": The hostname or address that should be used to identify this daemon. If not set, etcdmon will attempt to determine it automatically.
-  -interval=10: The number of seconds between each poll to etcd.
+  -interface="": The interface to use to infer the address of the local host.
+  -interval=10ns: The number of seconds between each poll to etcd.
   -key="": The key path to post to. %H will be replaced with the current host and %P with any configured port. e.g. process/%H:%P
   -port=0: A port, if any that will be set along with the host name.
   -remote="": The address to use to infer the address of the local host.
-  -ttl=30: The number of seconds that the key should stay alive after no polls are received.
+  -ttl=30ns: The number of seconds that the key should stay alive after no polls are received.
   -value="": The the value to sent to etcd. Like path, %H and %P can be used for automatic replacement. If not set, the host (and port if set) will be used as the value.
 ```
 
