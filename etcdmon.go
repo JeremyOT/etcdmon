@@ -3,15 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/JeremyOT/address/lookup"
-	"github.com/JeremyOT/etcdmon/cmd"
-	"github.com/JeremyOT/etcdmon/etcd"
 	"log"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/JeremyOT/address/lookup"
+	"github.com/JeremyOT/etcdmon/cmd"
+	"github.com/JeremyOT/etcdmon/etcd"
 )
 
 var etcdAddress = flag.String("etcd", "http://127.0.0.1:4001", "The url of the etcd instance to connect to.")
@@ -20,7 +21,7 @@ var updateInterval = flag.Duration("interval", 10, "The number of seconds betwee
 var ttl = flag.Duration("ttl", 30, "The number of seconds that the key should stay alive after no polls are received.")
 var host = flag.String("host", "", "The hostname or address that should be used to identify this daemon. If not set, etcdmon will attempt to determine it automatically.")
 var port = flag.Int("port", 0, "A port, if any that will be set along with the host name.")
-var value = flag.String("value", "", "The the value to sent to etcd. Like path, %H and %P can be used for automatic replacement. If not set, the host (and port if set) will be used as the value.")
+var value = flag.String("value", "", "The the value to sent to etcd. Like path, %H and %P can be used for automatic replacement. If not set, a json object with the host (and port if set) will be used as the value.")
 var apiRoot = flag.String("api", "/v2/keys", "The root value for any key path.")
 var remoteTestAddress = flag.String("remote", "", "The address to use to infer the address of the local host.")
 var interfaceName = flag.String("interface", "", "The interface to use to infer the address of the local host.")
@@ -28,9 +29,9 @@ var interfaceName = flag.String("interface", "", "The interface to use to infer 
 func formatValue(value, host string, port int) string {
 	if value == "" {
 		if port > 0 {
-			return fmt.Sprintf("%s:%d", host, port)
+			return fmt.Sprintf(`{"host": "%s", "port": %d}`, host, port)
 		} else {
-			return host
+			return fmt.Sprintf(`{"host": "%s"}`, host)
 		}
 	}
 	return strings.Replace(strings.Replace(value, "%H", host, -1), "%P", strconv.Itoa(port), -1)
