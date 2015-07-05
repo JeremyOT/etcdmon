@@ -1,6 +1,8 @@
 package etcd
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -53,4 +55,44 @@ func RegisterService(etcdHost, keyPath, value string, ttl, interval time.Duratio
 			return
 		}
 	}
+}
+
+type EtcdNode struct {
+	Key           string      `json:"key"`
+	Directory     bool        `json:"dir"`
+	Nodes         []*EtcdNode `json:"nodes"`
+	Value         string      `json:"value"`
+	ModifiedIndex int         `json:"modifiedIndex"`
+	CreatedIndex  int         `json:"createdIndex"`
+	Expiration    time.Time   `json:"expiration"`
+}
+
+type EtcdResponse struct {
+	Action string    `json:"action"`
+	Node   *EtcdNode `json:"node"`
+}
+
+func ListServices(etcdHost, keyPath string) (nodes []*EtcdNode, err error) {
+	etcdUrl, err := url.Parse(etcdHost)
+	if err != nil {
+		log.Println("Bad etcd host:", err)
+		return
+	}
+	etcdUrl.Path = path.Join(etcdUrl.Path, keyPath)
+	resp, err := http.Get(etcdUrl.String())
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var response EtcdResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, err
+	}
+	nodes = response.Node.Nodes
+	return
 }
