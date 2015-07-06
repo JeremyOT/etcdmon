@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/JeremyOT/address/lookup"
@@ -43,6 +45,38 @@ func formatKey(key, host string, port int) string {
 	return strings.Replace(strings.Replace(key, "%H", host, -1), "%P", strconv.Itoa(port), -1)
 }
 
+func monitorSignal(sigChan chan os.Signal, registry *etcd.Registry, command *cmd.Command) {
+	for sig := range sigChan {
+		switch sig {
+		case syscall.SIGQUIT:
+			if command != nil {
+				log.Println("Received signal:", sig, "exiting after grace period")
+				registry.SafeStop()
+				log.Println("Killing process")
+				if err := command.Kill(); err != nil {
+					log.Println("Failed to kill process:", err)
+					os.Exit(1)
+				}
+			} else {
+				log.Println("Received signal:", sig, "exiting immediately")
+				registry.Stop()
+			}
+		default:
+			log.Println("Received signal:", sig, "exiting immediately")
+			registry.Stop()
+			if command != nil {
+				if err := command.Signal(sig); err != nil {
+					log.Println("Failed to send signal:", sig, err)
+					if err = command.Kill(); err != nil {
+						log.Println("Failed to kill process:", err)
+						os.Exit(1)
+					}
+				}
+			}
+		}
+	}
+}
+
 func main() {
 	flag.Usage = func() {
 		fmt.Println("Usage:")
@@ -59,6 +93,7 @@ func main() {
 	if *etcdAddress == "" || *etcdKey == "" {
 		flag.Usage()
 	}
+	log.SetOutput(os.Stdout)
 	if *listRegistered {
 		keyPath := path.Join(*apiRoot, *etcdKey)
 		services, err := etcd.ListServices(*etcdAddress, keyPath)
@@ -104,12 +139,22 @@ func main() {
 	keyPath := formatKey(path.Join(*apiRoot, *etcdKey), serviceHost, *port)
 	formattedValue := formatValue(*value, serviceHost, *port)
 	fmt.Println("Etcd:", *etcdAddress, "Key:", keyPath, "Value:", formattedValue, "TTL:", *ttl, "UpdateInterval:", *updateInterval)
-	quit := make(chan int)
+	registry := etcd.NewRegistry(*etcdAddress, keyPath, formattedValue, *ttl, *updateInterval)
+
+	sigChan := make(chan os.Signal)
 	if len(args) == 0 {
 		fmt.Println("No command specified. Running indefinitely.")
+		registry.Start()
+		go monitorSignal(sigChan, registry, nil)
+		signal.Notify(sigChan, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+		registry.Wait()
 	} else {
+		command := cmd.New(args)
 		fmt.Println("Monitoring command:", strings.Join(args, " "))
-		go cmd.RunCommand(args, quit)
+		command.Start()
+		registry.Start()
+		go monitorSignal(sigChan, registry, command)
+		signal.Notify(sigChan, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+		command.Wait()
 	}
-	etcd.RegisterService(*etcdAddress, keyPath, formattedValue, *ttl, *updateInterval, quit)
 }
