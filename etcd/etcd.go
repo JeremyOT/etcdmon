@@ -110,7 +110,7 @@ func (c Config) Populate() (populated Config, err error) {
 		}
 	}
 	populated.KeyPath = FormatKey(populated.KeyPath, populated.Host, populated.Port)
-	populated.Value = FormatValue(populated.KeyPath, populated.Host, populated.Port, populated.Tag, populated.StartTime)
+	populated.Value = FormatValue(populated.Value, populated.Host, populated.Port, populated.Tag, populated.StartTime)
 	return
 }
 
