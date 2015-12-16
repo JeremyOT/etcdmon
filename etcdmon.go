@@ -6,13 +6,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/JeremyOT/address/lookup"
 	"github.com/JeremyOT/etcdmon/cmd"
 	"github.com/JeremyOT/etcdmon/etcd"
 )
@@ -25,25 +22,7 @@ var host = flag.String("host", "", "The hostname or address that should be used 
 var port = flag.Int("port", 0, "A port, if any that will be set along with the host name.")
 var value = flag.String("value", "", "The the value to sent to etcd. Like path, %H and %P can be used for automatic replacement. If not set, a json object with the host (and port if set) will be used as the value.")
 var apiRoot = flag.String("api", "/v2/keys", "The root value for any key path.")
-var remoteTestAddress = flag.String("remote", "", "The address to use to infer the address of the local host.")
-var interfaceName = flag.String("interface", "", "The interface to use to infer the address of the local host.")
 var listRegistered = flag.Bool("list", false, "List all currently registered services matching the supplied parameters and exit.")
-var listRegisteredExpiration = flag.Bool("expiry", false, "List expiration time as well.")
-
-func formatValue(value, host string, port int) string {
-	if value == "" {
-		if port > 0 {
-			return fmt.Sprintf(`{"host": "%s", "port": %d}`, host, port)
-		} else {
-			return fmt.Sprintf(`{"host": "%s"}`, host)
-		}
-	}
-	return strings.Replace(strings.Replace(value, "%H", host, -1), "%P", strconv.Itoa(port), -1)
-}
-
-func formatKey(key, host string, port int) string {
-	return strings.Replace(strings.Replace(key, "%H", host, -1), "%P", strconv.Itoa(port), -1)
-}
 
 func monitorSignal(sigChan chan os.Signal, registry *etcd.Registry, command *cmd.Command) {
 	for sig := range sigChan {
@@ -94,52 +73,34 @@ func main() {
 		flag.Usage()
 	}
 	log.SetOutput(os.Stdout)
+	registryConfig := etcd.Config{
+		APIRoot:        *apiRoot,
+		EtcdHost:       *etcdAddress,
+		Key:            *etcdKey,
+		Value:          *value,
+		Host:           *host,
+		UpdateInterval: *updateInterval,
+		TTL:            *ttl,
+	}
+	registryConfig, err := registryConfig.Populate()
+	if err != nil {
+		panic(err)
+	}
 	if *listRegistered {
-		keyPath := path.Join(*apiRoot, *etcdKey)
-		services, err := etcd.ListServices(*etcdAddress, keyPath)
+		// keyPath := path.Join(*apiRoot, *etcdKey)
+		services, err := etcd.ListServices(registryConfig)
 		if err != nil {
 			panic(err)
 		}
 		for _, node := range services {
-			if *listRegisteredExpiration {
-				if node.Expiration.IsZero() {
-					fmt.Println(node.Value, "Expires: Never")
-				} else {
-					fmt.Println(node.Value, "Expires:", node.Expiration.Sub(time.Now()))
-				}
-			} else {
-				fmt.Println(node.Value)
-			}
+			fmt.Println(node)
 		}
 		return
 	}
-	remote := *remoteTestAddress
-	if remote == "" {
-		remote = *etcdAddress
-	}
 	args := flag.Args()
-	serviceHost := *host
-	if serviceHost == "" {
-		if *interfaceName != "" {
-			ip, err := lookup.InterfaceIP(*interfaceName)
-			if err != nil {
-				log.Println("Error retrieving address. Try using a different -interface='' or setting it manually with -host=''.", err)
-				os.Exit(1)
-			}
-			serviceHost = ip.String()
-		} else {
-			var err error
-			serviceHost, err = lookup.LocalAddress(remote)
-			if err != nil {
-				log.Println("Error retrieving address. Try using a different -remote='' or setting it manually with -host=''.", err)
-				os.Exit(1)
-			}
-		}
-	}
-	keyPath := formatKey(path.Join(*apiRoot, *etcdKey), serviceHost, *port)
-	formattedValue := formatValue(*value, serviceHost, *port)
-	fmt.Println("Etcd:", *etcdAddress, "Key:", keyPath, "Value:", formattedValue, "TTL:", *ttl, "UpdateInterval:", *updateInterval)
-	registry := etcd.NewRegistry(*etcdAddress, keyPath, formattedValue, *ttl, *updateInterval)
+
+	fmt.Println("Etcd:", registryConfig.EtcdHost, "Key:", registryConfig.KeyPath, "Value:", registryConfig.Value, "TTL:", registryConfig.TTL, "UpdateInterval:", registryConfig.UpdateInterval)
+	registry := etcd.NewRegistry(registryConfig)
 
 	sigChan := make(chan os.Signal)
 	if len(args) == 0 {

@@ -2,15 +2,21 @@ package etcd
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/JeremyOT/address/lookup"
 )
+
+const DefaultAPIRoot = "/v2/keys"
 
 type Registry struct {
 	interval time.Duration
@@ -22,13 +28,119 @@ type Registry struct {
 	done     chan struct{}
 }
 
-func NewRegistry(etcdHost, keyPath, value string, ttl, interval time.Duration) *Registry {
+type Config struct {
+	EtcdHost       string
+	APIRoot        string
+	Key            string
+	KeyPath        string
+	Value          string
+	Port           int
+	Host           string
+	Tag            string
+	StartTime      string
+	TTL            time.Duration
+	UpdateInterval time.Duration
+}
+
+type Service struct {
+	Host       string    `json:"host"`
+	Port       int       `json:"port,omitempty"`
+	StartTime  string    `json:"start_time,omitempty"`
+	Tag        string    `json:"tag,omitempty"`
+	RawValue   string    `json:"-"`
+	Expiration time.Time `json:"-"`
+}
+
+func (s *Service) String() string {
+	if s.Host != "" {
+		str := "Node: " + s.Host
+		if s.Port > 0 {
+			str += fmt.Sprintf(":%d", s.Port)
+		}
+		if s.Tag != "" {
+			str += " Tag: " + s.Tag
+		}
+		if s.StartTime != "" {
+			str += " Started: " + s.StartTime
+		}
+		return str
+	}
+	return s.RawValue
+}
+
+func (s *Service) Address() string {
+	if s.Port > 0 {
+		return net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
+	}
+	return s.Host
+}
+
+func ParseService(node *EtcdNode) Service {
+	var service Service
+	json.Unmarshal([]byte(node.Value), &service)
+	service.RawValue = node.Value
+	service.Expiration = node.Expiration
+	return service
+}
+
+func (c Config) Populate() (populated Config, err error) {
+	populated = Config{
+		EtcdHost:       c.EtcdHost,
+		Key:            c.Key,
+		APIRoot:        c.APIRoot,
+		KeyPath:        c.KeyPath,
+		Value:          c.Value,
+		Port:           c.Port,
+		Host:           c.Host,
+		TTL:            c.TTL,
+		Tag:            c.Tag,
+		StartTime:      c.StartTime,
+		UpdateInterval: c.UpdateInterval,
+	}
+	if populated.APIRoot == "" {
+		populated.APIRoot = DefaultAPIRoot
+	}
+	if populated.KeyPath == "" {
+		populated.KeyPath = path.Join(populated.APIRoot, populated.Key)
+	}
+	if populated.Host == "" {
+		populated.Host, err = lookup.LocalAddress(populated.EtcdHost)
+		if err != nil {
+			return
+		}
+	}
+	populated.KeyPath = FormatKey(populated.KeyPath, populated.Host, populated.Port)
+	populated.Value = FormatValue(populated.KeyPath, populated.Host, populated.Port, populated.Tag, populated.StartTime)
+	return
+}
+
+func FormatValue(value, host string, port int, tag, startTime string) string {
+	if startTime == "" {
+		startTime = time.Now().Format(time.RFC3339)
+	}
+	if value == "" {
+		service := Service{Host: host, Port: port, StartTime: startTime, Tag: tag}
+		data, _ := json.Marshal(service)
+		return string(data)
+	}
+	value = strings.Replace(value, "%H", host, -1)
+	value = strings.Replace(value, "%P", strconv.Itoa(port), -1)
+	value = strings.Replace(value, "%S", startTime, -1)
+	value = strings.Replace(value, "%T", tag, -1)
+	return value
+}
+
+func FormatKey(key, host string, port int) string {
+	return strings.Replace(strings.Replace(key, "%H", host, -1), "%P", strconv.Itoa(port), -1)
+}
+
+func NewRegistry(config Config) *Registry {
 	return &Registry{
-		etcdHost: etcdHost,
-		keyPath:  keyPath,
-		value:    value,
-		interval: interval,
-		ttl:      ttl,
+		etcdHost: config.EtcdHost,
+		keyPath:  config.KeyPath,
+		value:    config.Value,
+		interval: config.UpdateInterval,
+		ttl:      config.TTL,
 	}
 }
 
@@ -113,13 +225,17 @@ type EtcdResponse struct {
 	Node   *EtcdNode `json:"node"`
 }
 
-func ListServices(etcdHost, keyPath string) (nodes []*EtcdNode, err error) {
-	etcdUrl, err := url.Parse(etcdHost)
+func ListServices(config Config) (services []*Service, err error) {
+	config, err = config.Populate()
+	if err != nil {
+		return
+	}
+	etcdUrl, err := url.Parse(config.EtcdHost)
 	if err != nil {
 		log.Println("Bad etcd host:", err)
 		return
 	}
-	etcdUrl.Path = path.Join(etcdUrl.Path, keyPath)
+	etcdUrl.Path = path.Join(etcdUrl.Path, config.KeyPath)
 	resp, err := http.Get(etcdUrl.String())
 	if err != nil {
 		return
@@ -134,6 +250,11 @@ func ListServices(etcdHost, keyPath string) (nodes []*EtcdNode, err error) {
 	if err != nil {
 		return nil, err
 	}
-	nodes = response.Node.Nodes
+	nodes := response.Node.Nodes
+	services = make([]*Service, 0, len(nodes))
+	for _, n := range nodes {
+		var service = ParseService(n)
+		services = append(services, &service)
+	}
 	return
 }
