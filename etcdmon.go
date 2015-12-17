@@ -81,6 +81,7 @@ func main() {
 		Host:           *host,
 		UpdateInterval: *updateInterval,
 		TTL:            *ttl,
+		Port:           *port,
 	}
 	registryConfig, err := registryConfig.Populate()
 	if err != nil {
