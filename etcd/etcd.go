@@ -144,7 +144,7 @@ func NewRegistry(config Config) *Registry {
 	}
 }
 
-func putToUrl(targetUrl, body, contentType string) error {
+func putToURL(targetUrl, body, contentType string) error {
 	if request, err := http.NewRequest("PUT", targetUrl, strings.NewReader(body)); err != nil {
 		return err
 	} else {
@@ -158,7 +158,20 @@ func putToUrl(targetUrl, body, contentType string) error {
 	return nil
 }
 
-// Periodically put the specified value to etcdHost at keyPath. Will put data every
+func deleteURL(targetUrl string) error {
+	if request, err := http.NewRequest("DELETE", targetUrl, nil); err != nil {
+		return err
+	} else {
+		if resp, err := http.DefaultClient.Do(request); err != nil {
+			return err
+		} else {
+			defer resp.Body.Close()
+		}
+	}
+	return nil
+}
+
+// Start periodically puts the specified value to etcdHost at keyPath. Will put data every
 // interval seconds with the specified ttl until quit is closed.
 func (r *Registry) Start() {
 	r.quit = make(chan struct{})
@@ -166,27 +179,35 @@ func (r *Registry) Start() {
 	go r.registerService()
 }
 
-func (r *Registry) registerService() {
-	etcdUrl, err := url.Parse(r.etcdHost)
+func (r *Registry) url() string {
+	etcdURL, err := url.Parse(r.etcdHost)
 	if err != nil {
 		log.Println("Bad etcd host:", err)
+		return ""
+	}
+	etcdURL.Path = path.Join(etcdURL.Path, r.keyPath)
+	return etcdURL.String()
+}
+
+func (r *Registry) registerService() {
+	etcdURL := r.url()
+	if etcdURL == "" {
 		return
 	}
-	etcdUrl.Path = path.Join(etcdUrl.Path, r.keyPath)
 	values := url.Values{}
 	values.Set("ttl", strconv.Itoa(int(r.ttl/time.Second)))
 	values.Set("value", r.value)
 	body := values.Encode()
+	log.Printf("Registering service at %s with value %s and TTL %s", etcdURL, r.value, r.ttl)
 	contentType := "application/x-www-form-urlencoded"
-	urlString := etcdUrl.String()
-	if err := putToUrl(urlString, body, contentType); err != nil {
+	if err := putToURL(etcdURL, body, contentType); err != nil {
 		log.Println("Error updating etcd:", err)
 	}
 	clock := time.Tick(r.interval)
 	for {
 		select {
 		case <-clock:
-			if err := putToUrl(urlString, body, contentType); err != nil {
+			if err := putToURL(etcdURL, body, contentType); err != nil {
 				log.Println("Error updating etcd:", err)
 			}
 		case <-r.quit:
@@ -196,9 +217,16 @@ func (r *Registry) registerService() {
 	}
 }
 
+func (r *Registry) deregisterService() {
+	if err := deleteURL(r.url()); err != nil {
+		log.Println("Deregsiter failed:", err)
+	}
+}
+
 func (r *Registry) Stop() {
 	close(r.quit)
 	r.Wait()
+	r.deregisterService()
 }
 
 func (r *Registry) SafeStop() {
@@ -230,13 +258,13 @@ func ListServices(config Config) (services []*Service, err error) {
 	if err != nil {
 		return
 	}
-	etcdUrl, err := url.Parse(config.EtcdHost)
+	etcdURL, err := url.Parse(config.EtcdHost)
 	if err != nil {
 		log.Println("Bad etcd host:", err)
 		return
 	}
-	etcdUrl.Path = path.Join(etcdUrl.Path, config.KeyPath)
-	resp, err := http.Get(etcdUrl.String())
+	etcdURL.Path = path.Join(etcdURL.Path, config.KeyPath)
+	resp, err := http.Get(etcdURL.String())
 	if err != nil {
 		return
 	}
